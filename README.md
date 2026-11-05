@@ -2,7 +2,18 @@
 
 ### Your GeForce runs AI at half speed. This fixes it.
 
-![Version](https://img.shields.io/badge/version-2.0.0-76b900)![RTX 20 | 30 | 40](https://img.shields.io/badge/GeForce-RTX%2020%20%7C%2030%20%7C%2040-76b900?logo=nvidia&logoColor=white)![Linux](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)![License GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue)![Stars](https://img.shields.io/github/stars/Zagitta/gpu-unlock?style=flat&color=yellow)
+![Version](https://img.shields.io/badge/version-2.0.0--turing-76b900)![RTX 20 | 30 | 40](https://img.shields.io/badge/GeForce-RTX%2020%20%7C%2030%20%7C%2040-76b900?logo=nvidia&logoColor=white)![Turing Support](https://img.shields.io/badge/Turing%20(RTX%2020)-Working-brightgreen)![Linux](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)![License GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue)![Stars](https://img.shields.io/github/stars/Kaspral1/gpu-unlock?style=flat&color=yellow)[![Sponsor](https://img.shields.io/badge/Sponsor-Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/kaspral)
+
+> [!IMPORTANT]
+> **About this fork (`Kaspral1/gpu-unlock`):** This is a fork of [`Zagitta/gpu-unlock`](https://github.com/Zagitta/gpu-unlock) that adds **working full-speed Tensor Core unlock support for NVIDIA Turing (RTX 20 series: TU102 / TU104 / TU106 / TU106M)**, verified on **RTX 2060 Mobile (`10de:1f15`)** (`28.6 → 57.2 TFLOPS`, +100%).
+>
+> **Key differences from upstream:**
+> - Working Turing unlock with dual-write V67 ROP payload (`TU_FEAT_PLM` + `WPR2_ADDR_HI` clear) and **no-FLR handoff** (so VBIOS `devinit` does not wipe the unlock).
+> - Fixed Turing GSP Falcon `CPUCTL.HALTED` pre-start handling and 32-bit/47-bit DMA masks for FWSEC-FRTS / SEC2 Booter.
+> - Added PCI ID `0x1f15` (RTX 2060 Mobile `TU106M`).
+> - Included standalone CUDA PTX Tensor Core benchmark (`scripts/bench_tensor.py`) and Turing technical write-ups ([EN](docs/How%20Turing%20was%20unlocked.md) / [PL](docs/Jak_odblokowano_Turing_RTX2060_PL.md)).
+>
+> **Disclaimer — Use at your own risk:** Turing support is experimental and modifies low-level GPU registers via a kernel module at boot. This software is provided **"as is"**, without warranty of any kind, under the **GPL-2.0** license. Use entirely at your own risk.
 
 **Up to 2× FP16 / BF16 / TF32 tensor throughput** · **+25–55% LLM prefill** · **+25–50% fine-tuning** · **+30–55% image generation**
 
@@ -25,7 +36,7 @@ to redo when NVIDIA releases a new driver.
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------- |
 | **Ampere** (RTX 30)       | RTX 3050, 3060, 3060 Ti, 3070, 3070 Ti, 3080, 3080 Ti, 3090, 3090 Ti, plus RTX 3070/3080 Laptop GPUs                   | Stable, 100+ user reports |
 | **Ada Lovelace** (RTX 40) | RTX 4060, 4060 Ti, 4070, 4070 SUPER, 4070 Ti, 4070 Ti SUPER, 4080, 4080 SUPER, 4090, 4090 D, RTX 4050/4060 Laptop GPUs | Experimental              |
-| **Turing** (RTX 20)       | RTX 2060, 2060 SUPER, 2070, 2070 SUPER, 2080, 2080 SUPER, 2080 Ti, Titan RTX                                           | Experimental              |
+| **Turing** (RTX 20)       | RTX 2060 (Desktop & Mobile `10de:1f15`), 2060 SUPER, 2070, 2070 SUPER, 2080, 2080 SUPER, 2080 Ti, Titan RTX            | Verified on TU106M (`0x1f15`) |
 | Blackwell (RTX 50)        |                                                                                                                        | Not supported             |
 
 Laptops only stay unlocked if the dedicated GPU is never fully powered off.  
@@ -46,8 +57,9 @@ power headroom to run it.
 
 Dense matrix multiply (FP32 accumulation, stock power limits):
 
-| Card | BF16 before | BF16 after | Gain |
+| Card | BF16 / FP16 (FP32 accum) before | After | Gain |
 | --- | --- | --- | --- |
+| RTX 2060 Mobile (`10de:1f15`) | 28.6 TFLOPS | 57.2 TFLOPS | +100% (97.2% of FP16-accum rate) |
 | RTX 3060 12 GB | 27 TFLOPS | 51 TFLOPS | +87% |
 | RTX 3060 Ti | 37 TFLOPS | 68 TFLOPS | +82% |
 | RTX 3070 | 40 TFLOPS | 72 TFLOPS | +81% |
@@ -87,7 +99,7 @@ users have filed, where you can find full benchmark details and post your own.
 First run:
 
 ```sh
-git clone https://github.com/Zagitta/gpu-unlock
+git clone https://github.com/Kaspral1/gpu-unlock
 cd gpu-unlock
 make install
 ```
@@ -105,6 +117,20 @@ in `/etc/default/grub`, then run `sudo update-grub`.
 (`bootctl status` shows its location).
 - **UKI / generated entries:** add it to `/etc/kernel/cmdline` and regenerate
 your boot images/entries (e.g. `sudo mkinitcpio -P` for mkinitcpio UKIs).
+
+### Verify Unlock & Run Tensor Core Benchmark
+
+After rebooting, verify that `gpu_unlock` succeeded in `dmesg` and run the standalone CUDA PTX Tensor Core benchmark (`scripts/bench_tensor.py`):
+
+```sh
+sudo dmesg | grep gpu_unlock
+python3 scripts/bench_tensor.py
+```
+
+For detailed technical write-ups on how the unlock works internally:
+- [How Ampere was unlocked](docs/How%20Ampere%20was%20unlocked.md)
+- [How Turing (TU102/TU104/TU106/TU106M) was unlocked](docs/How%20Turing%20was%20unlocked.md)
+- [Dokumentacja techniczna odblokowania Turing RTX 2060 (PL)](docs/Jak_odblokowano_Turing_RTX2060_PL.md)
 
 # FAQ
 
@@ -244,14 +270,27 @@ terms. See `firmware/NOTICE.md` and `licenses/` for attribution and notices.
 
 # Support me
 
-Help me buy more GPUs <3
+### Support Turing fork & RTX 2060 support (Kaspral1)
+
+If the Turing / RTX 2060 unlock helped you, consider supporting my work:
+
+[![Sponsor on Buy Me a Coffee](https://img.shields.io/badge/Sponsor-Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/kaspral)
+
+- **Buy Me a Coffee:** [https://buymeacoffee.com/kaspral](https://buymeacoffee.com/kaspral)
+- **BTC:** `bc1pdc8clusv5hpgz7laywwzhjjcklk6x2cgj2xu5uc9xes9fukxaegsn7cs20`
+- **ETH:** `0x006dAcBA1344144AB395D02637045Dd19aB54C2E`
+- **SOL:** `96Lc4X6hieoCkUFHtDW4wvbWXgZvebqTktjRNiCNe1ex`
+
+### Support original author (Zagitta)
+
+Help Zagitta buy more GPUs <3
 
 [Github Sponsor](https://github.com/sponsors/Zagitta)
 
-[https://buymeacoffee.com/zagitta](https://buymeacoffee.com/zagitta) 
+[https://buymeacoffee.com/zagitta](https://buymeacoffee.com/zagitta)
 
-ETH: 0xf4eee937937f92038D70B16AbD7736D8a53a1c5c
+ETH: `0xf4eee937937f92038D70B16AbD7736D8a53a1c5c`
 
-BTC: bc1qwpkwp70fn76z3s4kg2l9y3j4kst95twcznuugf
+BTC: `bc1qwpkwp70fn76z3s4kg2l9y3j4kst95twcznuugf`
 
-SOL: 8Rih6HY7V4LcdjYHz4iSffT4fTniqw5CACaBigSVxNYu
+SOL: `8Rih6HY7V4LcdjYHz4iSffT4fTniqw5CACaBigSVxNYu`

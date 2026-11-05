@@ -122,24 +122,16 @@ static const struct gu_payload ad102_v67 = {
 	.marker = 0x67b00001,
 };
 
-/* TU102 port of the same six-write chain from Petri Krohn. The two signed Booters 
- * are that same code with functions moved, and the fwmap resolves the gadgets exactly
- * (score 1.0): the write entry 0x1110 -> 0x10b9, the status read
- * 0x576b -> 0x6521, the cleanup gadget 0x84c8 -> 0x7f27 and the final pass
- * 0xd52 -> 0xccb. The 0x18-byte frames and the 0x6140 canary are identical,
- * so the six frames sit at the same relative offsets from 0xf940.
- *
- * The frame 6 handoff stays at 0x7ea4, the Turing normal main handoff, rather
- * than the fwmap twin of GA102's 0x81ee (0x7cfc): the latter halts inside the
- * exit path and leaves the Booter's boot-stage marker (0x31) in MAILBOX0,
- * while 0x7ea4 runs the subsystem completion that publishes the clean zero. */
+/* TU102 two-write V67 chain with ACR HS mutex-3 release and clean handoff:
+ * writes TU_FEAT_PLM (0x00409650 = 0xffffffff) and clears WPR2_ADDR_HI
+ * (0x001fa828 = 0x00000000), then runs 0x7c43 -> 0xcbd -> 0xc95 -> 0x1f89 ->
+ * 0xe85 -> 0x7ea4 so the Booter releases ACR mutex 3, sanitizes DMEM, resets
+ * SEC2_RESET_PLM to 0xffffffff, and halts cleanly with MAILBOX0 = 0 and WPR2
+ * down without needing a post-unlock PCIe FLR (which would wipe FEAT_PLM/SS0/SS1
+ * on Turing). */
 static const struct gu_payload_slot tu102_slots[] = {
 	{ 0xf940, 0xf944 },
 	{ 0xf958, 0xf95c },
-	{ 0xf970, 0xf974 },
-	{ 0xf988, 0xf98c },
-	{ 0xf9a0, 0xf9a4 },
-	{ 0xf9b8, 0xf9bc },
 };
 static const struct gu_payload_word tu102_words[] = {
 	{ 0x1100, 0x00000007 },
@@ -147,20 +139,33 @@ static const struct gu_payload_word tu102_words[] = {
 	{ 0xf94c, 0x000010b9 },	/* write 1: r0=address, r1=value */
 	{ 0xf950, 0x00006140 },	/* frame 1: r3 for write 2 */
 	{ 0xf964, 0x000010b9 },	/* frame 1: ret -> write 2 */
-	{ 0xf968, 0x00006140 },	/* frame 2: r3 for write 3 */
-	{ 0xf97c, 0x000010b9 },	/* frame 2: ret -> write 3 */
-	{ 0xf980, 0x00006140 },	/* frame 3: r3 for write 4 */
-	{ 0xf994, 0x000010b9 },	/* frame 3: ret -> write 4 */
-	{ 0xf998, 0x00006140 },	/* frame 4: r3 for write 5 */
-	{ 0xf9ac, 0x000010b9 },	/* frame 4: ret -> write 5 */
-	{ 0xf9b0, 0x00006140 },	/* frame 5: r3 for write 6 */
-	{ 0xf9c4, 0x000010b9 },	/* frame 5: ret -> write 6 */
-	{ 0xf9c8, 0x00006140 },	/* frame 6: r3 (unused by cleanup) */
-	{ 0xf9d4, 0x00000003 },	/* frame 6: r0 = 3 for 0xccb */
-	{ 0xf9dc, 0x00006521 },	/* frame 6: ret -> SE/CSB handshake */
-	{ 0xf9e0, 0x00007f27 },	/* cleanup gadget */
-	{ 0xf9ec, 0x00000ccb },	/* cleanup: final pass */
-	{ 0xf9f0, 0x00007ea4 },	/* HS clean exit */
+	{ 0xf968, 0x00006140 },	/* frame 2: r3 canary */
+	{ 0xf974, 0x00000000 },	/* frame 2: r0 = 0 for 0xcbd */
+	{ 0xf97c, 0x00000cbd },	/* frame 2: ret -> acquire SE bus & read status */
+	{ 0xf980, 0x00000001 },
+	{ 0xf984, 0x00000000 },
+	{ 0xf988, 0x00008e18 },
+	{ 0xf98c, 0x00000000 },
+	{ 0xf994, 0x00000c95 },	/* release ACR mutex 3 */
+	{ 0xf998, 0x00006140 },
+	{ 0xf99c, 0x00000000 },
+	{ 0xf9a0, 0x00000000 },
+	{ 0xf9a4, 0x00000001 },
+	{ 0xf9ac, 0x00001f89 },	/* SE bus release */
+	{ 0xf9b0, 0x00006140 },
+	{ 0xf9b4, 0x00006140 },
+	{ 0xf9b8, 0x0000ffff },	/* token = 0xfff0 + 0xf */
+	{ 0xf9c0, 0x00001f89 },
+	{ 0xf9c4, 0x00006140 },
+	{ 0xf9c8, 0x00006140 },
+	{ 0xf9cc, 0x00000000 },
+	{ 0xf9d4, 0x00000e85 },	/* post-release step */
+	{ 0xf9d8, 0x00001f89 },
+	{ 0xf9dc, 0x00006140 },
+	{ 0xf9e0, 0x00006140 },
+	{ 0xf9e4, 0x00000000 },
+	{ 0xf9ec, 0x00007ea4 },	/* normal main handoff -> clean halt (mbox0=0) */
+	{ 0xf9f8, 0x00000000 },	/* main_sp + 0x08 = 0 (status = NV_OK) */
 };
 static const struct gu_payload tu102_v67 = {
 	.name = "tu102-v67",
@@ -173,13 +178,12 @@ static const struct gu_payload tu102_v67 = {
 	.completion = GU_PAYLOAD_HALT_RESET_PLM_ZERO,
 };
 
-/* Turing's FEAT aperture is at 0x409650. Opening WPR_CFG_PLM first lets the
- * driver's own WPR2 restore through the PLM gate; the second write opens the
- * FEAT aperture the SS0/SS1 selectors live behind. No WPR2 poke is needed:
- * restore_frts() writes it with the gate open. */
+/* Turing's FEAT aperture is at 0x409650. The first write opens the FEAT
+ * aperture that SS0/SS1 live behind; the second write clears WPR2_ADDR_HI to 0
+ * so the stock driver sees WPR2 as down without a post-unlock PCIe FLR. */
 static const struct gu_reg_write tu102_plm[] = {
-	{ GU_WPR_CFG_PLM_OFFSET,    0xfffff0ff },
 	{ GU_TU102_FEAT_PLM_OFFSET, 0xffffffff },
+	{ GU_WPR2_ADDR_HI_OFFSET,   0x00000000 },
 };
 static const struct gu_reg_write tu102_selectors[] = {
 	{ GU_TU102_FEAT_SS0_OFFSET, GU_SS0_UNLOCK },
@@ -393,9 +397,10 @@ static const struct gu_card cards[] = {
 	TU104(0x1e81), TU104(0x1e82), TU104(0x1e84), TU104(0x1e87),
 	TU104(0x1e89), TU104(0x1ec2), TU104(0x1ec7),
 
-	/* TU106: RTX 2070, RTX 2060 SUPER, RTX 2060 */
+	/* TU106: RTX 2070, RTX 2060 SUPER, RTX 2060, RTX 2060 Mobile */
 	TU106(0x1f02), TU106(0x1f03), TU106(0x1f06), TU106(0x1f07),
-	TU106(0x1f08), TU106(0x1f42), TU106(0x1f47),
+	TU106(0x1f08), TU106(0x1f11), TU106(0x1f15), TU106(0x1f42),
+	TU106(0x1f47),
 
 	/* AD102: RTX 4090, RTX 4090 D, RTX 4070 Ti SUPER */
 	AD102(0x2684), AD102(0x2685), AD102(0x2689),

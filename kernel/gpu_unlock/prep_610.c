@@ -175,7 +175,7 @@ int gpu_unlock_boot_desc_parse(const u8 *data, size_t size, u32 image_size,
 			if (rd32(data + j * 4))
 				return GU_DIAG(-EINVAL);
 		*out = (struct gpu_unlock_boot_desc) {
-			.code_offset = 0, .data_offset = 1160,
+			.code_offset = 0, .data_offset = 0,
 			.manifest_offset = 0, .image_size = image_size,
 		};
 		return 0;

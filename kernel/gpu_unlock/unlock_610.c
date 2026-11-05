@@ -361,6 +361,23 @@ static int unlock_transaction_unwind(struct unlock_transaction_work *work)
 	u16 now, want;
 	int ret = 0;
 
+	/* If a transaction failed after firmware started, attempt an error-path
+	 * PCIe FLR (matching turing_unlock's tu_flr recovery) so engines are
+	 * quiesced and BAR0/DMA resources can be released cleanly for nvidia.ko. */
+	if (work->firmware_started && work->state != GU_QUIESCED) {
+		u16 pending = 0xffff;
+
+		if (work->master) {
+			pci_clear_master(work->pdev);
+			work->master = false;
+		}
+		if (!pcie_flr(work->pdev)) {
+			pci_restore_state(work->pdev);
+			if (!diag_pci_word(work, true, PCI_EXP_DEVSTA, &pending) &&
+			    pending != 0xffff && !(pending & PCI_EXP_DEVSTA_TRPND))
+				work->state = GU_QUIESCED;
+		}
+	}
 	/* A timeout never authorizes freeing firmware-visible memory. */
 	if (work->firmware_started && work->state != GU_QUIESCED) {
 		pci_clear_master(work->pdev);
@@ -542,8 +559,17 @@ static int unlock_transaction_layout(struct unlock_transaction_work *work)
 	in->boot_size = work->bundle->boot_desc.image_size;
 	in->image_size = work->bundle->image_span.size;
 	in->nonwpr_size = 1ull << 20;
-	/* GA102's supported minimum heap; no GSP-RM clients are started here. */
-	in->heap_request = 88ull << 20;
+	if (work->card->family->turing_layout) {
+		/* Turing driver-exact heap formula (kgspPopulateWprMeta_TU102):
+		 * 8 MiB allocator + align_1MiB(96 KiB * GiB) + 96 MiB base RM. */
+		u64 gib = (in->usable_fb + ((1ull << 30) - 1)) >> 30;
+		u64 fw_heap = (((96ull << 10) * gib) + (1ull << 20) - 1) & ~((1ull << 20) - 1);
+
+		in->heap_request = (8ull << 20) + fw_heap + (96ull << 20);
+	} else {
+		/* GA102's supported minimum heap; no GSP-RM clients are started here. */
+		in->heap_request = 88ull << 20;
+	}
 	ret = gpu_unlock_layout(in, &work->layout);
 	dev_dbg(&work->pdev->dev,
 		 "layout decoded: fb=%#llx vga=%#llx mmu_valid=%u mmu_low=%#llx frts=%#llx heap=%#llx result=%d\n",
@@ -722,6 +748,10 @@ static int unlock_transaction_claim(struct unlock_transaction_work *work)
 static int unlock_transaction_dma(struct unlock_transaction_work *work)
 {
 	struct device *dev = &work->pdev->dev;
+	/* On Turing, the signed Booter enforces a sub-4GB read lock on WprMeta
+	 * (mailbox0 = 0x91 when < 4 GiB), while NVIDIA RM stages Booter inputs
+	 * with a 47-bit DMA mask (>= 4 GiB on >4 GiB RAM hosts). */
+	u64 mask = work->card->family->turing_layout ? DMA_BIT_MASK(47) : DMA_BIT_MASK(32);
 
 	if (!dev->dma_mask || work->streaming_ptr)
 		return GU_RESULT(-EINVAL);
@@ -730,11 +760,11 @@ static int unlock_transaction_dma(struct unlock_transaction_work *work)
 	work->coherent_before = dev->coherent_dma_mask;
 	dev_dbg(dev, "DMA masks: streaming=%#llx coherent=%#llx requested=%#llx\n",
 		(unsigned long long)work->streaming_before, (unsigned long long)work->coherent_before,
-		(unsigned long long)DMA_BIT_MASK(32));
-	if (GU_DIAG(dma_set_mask(dev, DMA_BIT_MASK(32))))
+		(unsigned long long)mask);
+	if (GU_DIAG(dma_set_mask(dev, mask)))
 		return GU_RESULT(-EIO);
 	work->coherent_set = true;
-	if (GU_DIAG(dma_set_coherent_mask(dev, DMA_BIT_MASK(32))))
+	if (GU_DIAG(dma_set_coherent_mask(dev, mask)))
 		return GU_RESULT(-EIO);
 	if (alloc_dma(work, "booter", &work->booter_buf, booter_image_bytes(&work->booter->hdr)))
 		return GU_RESULT(-ENOMEM);
@@ -810,9 +840,22 @@ static int unlock_transaction_fwsec(struct unlock_transaction_work *work)
 		ret = -EOPNOTSUPP;
 		goto out;
 	}
+	if (work->card->family->turing_layout) {
+		/* FWSEC-BL on Turing stages below 4 GiB, while Booter inputs use 47-bit. */
+		if (GU_DIAG(dma_set_coherent_mask(&work->pdev->dev, DMA_BIT_MASK(32)))) {
+			ret = -EIO;
+			goto out;
+		}
+	}
 	if (alloc_dma(work, "fwsec", &work->fwsec, fw.image_size)) {
 		ret = -ENOMEM;
 		goto out;
+	}
+	if (work->card->family->turing_layout) {
+		if (GU_DIAG(dma_set_coherent_mask(&work->pdev->dev, DMA_BIT_MASK(47)))) {
+			ret = -EIO;
+			goto out;
+		}
 	}
 	memcpy(work->fwsec.cpu, rom + fw.image_off, fw.image_size);
 	ret = gpu_unlock_fwsec_patch_frts(work->fwsec.cpu, &fw, frts);
@@ -955,8 +998,8 @@ static int unlock_transaction_gfw(struct unlock_transaction_work *work)
 			dev_info(&work->pdev->dev,
 				 "gpu_unlock: stage=gfw plm=%#x ss0=%#x ss1=%#x wpr2_hi=%#x\n",
 				 plm, ss0, ss1, wpr_hi);
-			/* An open PLM means the card was already unlocked or not cold. */
-			if (plm == ~0u)
+			/* An open PLM or unlocked selectors mean the card was already unlocked. */
+			if (plm == ~0u || (ss0 == GU_SS0_UNLOCK && ss1 == GU_SS1_UNLOCK))
 				return GU_RESULT(-EALREADY);
 			/* WPR2 is down from power-on until FWSEC-FRTS runs. An enabled
 			 * WPR2 means a driver has already used the card this power
@@ -1143,6 +1186,8 @@ static int publish_signature(struct unlock_transaction_work *work)
 	ret = gpu_unlock_wpr_meta_pack(work->meta.cpu, &work->layout, &args);
 	if (ret)
 		return GU_RESULT(ret);
+	if (work->card->family->turing_layout)
+		((u8 *)work->meta.cpu)[241] = 0x1; /* GSP_FW_FLAGS_CLOCK_BOOST */
 	dma_wmb();
 	work->state = GU_PUBLISHED;
 	dev_info(&work->pdev->dev,
@@ -1340,6 +1385,10 @@ static int run_privileged_writes(struct unlock_transaction_work *work,
 			return table_failure(work, "readback-exhausted",
 					     &table->entries[i + count - 1], after, -EIO);
 	}
+	/* Turing's V67 payload intentionally clears WPR2_ADDR_HI to 0 so the
+	 * stock driver sees WPR2 as down without a post-unlock PCIe FLR. */
+	if (work->card->family->turing_layout)
+		return 0;
 	ret = restore_frts(work);
 	return ret && table->count ?
 		table_failure(work, "final-FRTS", &table->entries[table->count - 1], after, ret) : ret;
@@ -1483,6 +1532,45 @@ static int unlock_transaction_reset(struct unlock_transaction_work *work)
 		return GU_RESULT(-EIO);
 	if (read_bar(work, GU_PMC_BOOT_0_OFFSET, &chip) || !chip || inaccessible(chip))
 		return GU_RESULT(-ENODEV);
+	/* On Turing (TU102/TU104/TU106), FEAT_PLM and SS0/SS1 do not survive
+	 * PCIe FLR (FLR triggers VBIOS devinit, which relocks FEAT_PLM and
+	 * resets SS0/SS1). Instead, the Turing V67 chain already cleared
+	 * WPR2_ADDR_HI to 0, released ACR mutex 3, sanitized DMEM, and halted
+	 * SEC2 cleanly. Re-lock FEAT_PLM and hand off without FLR. */
+	if (work->card->family->turing_layout) {
+		u32 sec2_ctl = 0, readout = ~0u;
+
+		write_bar(work, work->card->family->feat_plm, 0xffffff8fu);
+		if (diag_pci_word(work, true, PCI_EXP_DEVSTA, &pending) ||
+		    pending == 0xffff || (pending & PCI_EXP_DEVSTA_TRPND))
+			return GU_RESULT(-EBUSY);
+		if (read_bar(work, GU_GFW_CPUCTL_OFFSET, &cpuctl) || inaccessible(cpuctl) ||
+		    !(cpuctl & GU_GFW_CPUCTL_HALTED) ||
+		    read_bar(work, GU_SEC2_BASE + GU_FALCON_CPUCTL_OFFSET, &sec2_ctl) ||
+		    inaccessible(sec2_ctl) || !(sec2_ctl & GU_GFW_CPUCTL_HALTED) ||
+		    read_bar(work, GU_WPR2_ADDR_LO_OFFSET, &lo) || inaccessible(lo) ||
+		    read_bar(work, GU_WPR2_ADDR_HI_OFFSET, &hi) || inaccessible(hi) ||
+		    read_bar(work, work->card->family->feat_ss0, &ss0) || inaccessible(ss0) ||
+		    read_bar(work, work->card->family->feat_ss1, &ss1) || inaccessible(ss1) ||
+		    read_bar(work, GU_TU102_FEAT_READOUT_OFFSET, &readout) || inaccessible(readout) ||
+		    read_bar(work, work->card->family->feat_plm, &plm) ||
+		    (plm & 0xffff0000u) == 0xbadf0000u)
+			return GU_RESULT(-ENODEV);
+		if (hi >> 4) {
+			dev_err(&work->pdev->dev,
+				"Turing post-unlock WPR2 remains enabled: lo=%#x hi=%#x\n",
+				lo, hi);
+			return GU_RESULT(-EBUSY);
+		}
+		work->state = GU_QUIESCED;
+		if (ss0 != GU_SS0_UNLOCK || ss1 != GU_SS1_UNLOCK ||
+		    (readout & GU_SPEED_READOUT_MASK))
+			return GU_RESULT(-EIO);
+		dev_info(&work->pdev->dev,
+			 "gpu_unlock: stage=quiesce-turing wpr2=%#x:%#x ss0=%#x ss1=%#x readout=%#x plm=%#x cmd=%#x devsta=%#x chip=%#x\n",
+			 lo, hi, ss0, ss1, readout, plm, command, pending, chip);
+		return 0;
+	}
 	/* Ampere PF-FLR requires no engine-reset preconditioning in this cold,
 	 * unbound path (no initialized NVLink/P2P). The pinned GA102 rejoin14
 	 * sequence also goes from the early PLM result to FLR. A pre-FLR engine

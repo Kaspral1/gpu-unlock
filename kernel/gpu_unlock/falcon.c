@@ -307,14 +307,25 @@ int gu_falcon_loader(const struct gu_falcon_io *io, const struct gu_falcon_engin
 	ret = gu_falcon_reset(io, eng, evidence);
 	if (ret)
 		return ret;
-	if (falcon_read(io, eng->base + GU_FALCON_CPUCTL_OFFSET, &ctl) || inaccessible(ctl) || (ctl & 16) ||
+	ret = gu_falcon_poll(io, eng->base + GU_FALCON_DMACTL_OFFSET, 6, 0, 1000000, true, NULL);
+	if (ret)
+		return ret;
+	/* On Turing (TU106M 10de:1f15), GSP_CPUCTL reads 0x10 (HALTED) after
+	 * engine reset until STARTCPU is written; only reject inaccessible reads. */
+	if (falcon_read(io, eng->base + GU_FALCON_CPUCTL_OFFSET, &ctl) || inaccessible(ctl) ||
 	    falcon_read(io, eng->base + GU_FALCON_HWCFG_OFFSET, &hwcfg) || inaccessible(hwcfg) ||
 	    falcon_read(io, eng->base + GU_FALCON_DMACTL_OFFSET, &trans) || inaccessible(trans))
 		return -ENODEV;
 	if ((hwcfg & 0x1ff) < 2)
 		return -ERANGE;
 	dst = ((hwcfg & 0x1ff) - 2) << 8;
-	falcon_write(io, eng->base + GU_FALCON_DMACTL_OFFSET, trans & ~1u);
+	if (falcon_read(io, eng->fbif + GU_FBIF_CTL_OFFSET, &trans) || inaccessible(trans))
+		return -EIO;
+	falcon_write(io, eng->fbif + GU_FBIF_CTL_OFFSET, trans | (1u << 7));
+	falcon_write(io, eng->base + GU_FALCON_DMACTL_OFFSET, 0);
+	if (falcon_read(io, eng->fbif + GU_FBIF_TRANSCFG(0), &trans) || inaccessible(trans))
+		return -ENODEV;
+	falcon_write(io, eng->fbif + GU_FBIF_TRANSCFG(0), (trans & ~7u) | 5u);
 	if (falcon_read(io, eng->fbif + GU_FBIF_TRANSCFG(4), &trans) || inaccessible(trans))
 		return -ENODEV;
 	falcon_write(io, eng->fbif + GU_FBIF_TRANSCFG(4), (trans & ~7u) | 5u);
@@ -345,6 +356,24 @@ int gu_falcon_loader(const struct gu_falcon_io *io, const struct gu_falcon_engin
 	evidence->started = true;
 	falcon_write(io, eng->base + ((ctl & 64) ? GU_FALCON_CPUCTL_ALIAS_OFFSET :
 						GU_FALCON_CPUCTL_OFFSET), 2);
+	/* Wait for WPR2_ADDR_HI to come up first (proving the BL + FWSEC started
+	 * and cleared any pre-start CPUCTL.HALTED=0x10 state), then poll CPUCTL
+	 * for the post-FRTS halt (nv-uefi-unlocker tx_fwsec.rs GSP-HALT gate). */
+	{
+		ktime_t wpr_deadline = ktime_add_us(ktime_get(), 5000000);
+		u32 wpr_hi = 0;
+
+		for (;;) {
+			if (falcon_read(io, GU_WPR2_ADDR_HI_OFFSET, &wpr_hi) ||
+			    inaccessible(wpr_hi))
+				return -EIO;
+			if (wpr_hi >> 4)
+				break;
+			if (ktime_compare(ktime_get(), wpr_deadline) >= 0)
+				break;
+			usleep_range(500, 1000);
+		}
+	}
 	ret = gu_falcon_poll(io, eng->base + GU_FALCON_CPUCTL_OFFSET, 16, 16, 5000000, true, NULL);
 	evidence->halted = !ret;
 	return ret;
@@ -373,20 +402,28 @@ int gu_falcon_direct(const struct gu_falcon_io *io, const struct gu_falcon_engin
 		     struct gu_falcon_evidence *evidence)
 {
 	const u32 *image = program->words;
-	u32 i, ctl;
+	u32 i, ctl, trans;
 	int ret;
 
 	memset(evidence, 0, sizeof(*evidence));
 	ret = gu_falcon_reset(io, eng, evidence);
 	if (ret)
 		return ret;
-	ret = gu_falcon_poll(io, eng->base + GU_FALCON_CPUCTL_OFFSET, 16, 0, 1000, true, NULL);
+	ret = gu_falcon_poll(io, eng->base + GU_FALCON_CPUCTL_OFFSET, 16, 0, 1000, false, NULL);
+	if (ret && ret != -ETIMEDOUT)
+		return ret;
+	ret = gu_falcon_poll(io, eng->base + GU_FALCON_DMACTL_OFFSET, 6, 0, 1000000, true, NULL);
 	if (ret)
 		return ret;
-	/* REQUIRE_CTX=false, matching kflcnDisableCtxReq. */
-	if (falcon_read(io, eng->base + GU_FALCON_DMACTL_OFFSET, &ctl) || inaccessible(ctl))
+	/* kflcnDisableCtxReq + physical coherent sysmem on TRANSCFG(0) so the
+	 * direct-loaded Booter can DMA WprMeta and the V67 signature payload. */
+	if (falcon_read(io, eng->fbif + GU_FBIF_CTL_OFFSET, &trans) || inaccessible(trans))
+		return -EIO;
+	falcon_write(io, eng->fbif + GU_FBIF_CTL_OFFSET, trans | (1u << 7));
+	falcon_write(io, eng->base + GU_FALCON_DMACTL_OFFSET, 0);
+	if (falcon_read(io, eng->fbif + GU_FBIF_TRANSCFG(0), &trans) || inaccessible(trans))
 		return -ENODEV;
-	falcon_write(io, eng->base + GU_FALCON_DMACTL_OFFSET, ctl & ~1u);
+	falcon_write(io, eng->fbif + GU_FBIF_TRANSCFG(0), (trans & ~7u) | 5u);
 	falcon_pio_imem(io, eng->base, image, program->os_code_off, program->os_code_size, false);
 	falcon_pio_imem(io, eng->base, image, program->app_code_off, program->app_code_size, true);
 	falcon_write(io, eng->base + GU_FALCON_DMEMC_OFFSET, 1u << 24);
@@ -402,6 +439,7 @@ int gu_falcon_direct(const struct gu_falcon_io *io, const struct gu_falcon_engin
 	evidence->started = true;
 	falcon_write(io, eng->base + ((ctl & 64) ? GU_FALCON_CPUCTL_ALIAS_OFFSET :
 						GU_FALCON_CPUCTL_OFFSET), 2);
+	usleep_range(5000, 6000);
 	ret = gu_falcon_poll(io, eng->base + GU_FALCON_CPUCTL_OFFSET, 16, 16, 5000000, true, NULL);
 	evidence->halted = !ret;
 	return ret;
