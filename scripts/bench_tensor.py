@@ -2,7 +2,25 @@
 import ctypes
 import time
 
-cuda = ctypes.CDLL("/usr/lib/x86_64-linux-gnu/libcuda.so.1")
+
+def load_cuda():
+    candidates = (
+        "libcuda.so.1",
+        "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+        "/usr/lib64/libcuda.so.1",
+        "/usr/lib/libcuda.so.1",
+    )
+    for path in candidates:
+        try:
+            return ctypes.CDLL(path)
+        except OSError:
+            continue
+    raise SystemExit(
+        "Error: could not load libcuda.so.1. Make sure the NVIDIA driver is installed."
+    )
+
+
+cuda = load_cuda()
 
 
 def check(err, msg=""):
@@ -148,9 +166,10 @@ def main():
     tflops_f16 = run_bench(False, "FP16 accumulate")
     tflops_f32 = run_bench(True, "FP16 -> FP32 accumulate")
     ratio = (tflops_f32 / tflops_f16) * 100.0
-    print(f"Tensor MMA FP16 -> FP16 accumulate (100% ref):   {tflops_f16:.2f} TFLOPS")
-    print(f"Tensor MMA FP16 -> FP32 accumulate (odblokowane): {tflops_f32:.2f} TFLOPS")
-    print(f"Stosunek FP32-accum / FP16-accum:                 {ratio:.1f}% (zablokowany GeForce = ~50%, odblokowany = ~100%)")
+    status = "UNLOCKED" if ratio >= 85.0 else "CAPPED (stock GeForce)"
+    print(f"Tensor MMA FP16 -> FP16 accumulate (100% ref): {tflops_f16:.2f} TFLOPS")
+    print(f"Tensor MMA FP16 -> FP32 accumulate:            {tflops_f32:.2f} TFLOPS")
+    print(f"FP32-accum / FP16-accum ratio:                 {ratio:.1f}% [{status}]")
 
 
 if __name__ == "__main__":

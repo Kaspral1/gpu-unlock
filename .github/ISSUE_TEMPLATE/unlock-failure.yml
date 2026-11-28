@@ -1,15 +1,12 @@
 name: Unlock failure
-description: The unlock failed, gave no speedup, or did not last. If it worked, post in Discussions instead.
+description: The unlock failed, gave no speedup, or did not last.
 title: "Unlock failure: <card> (<PCI ID>)"
 body:
   - type: markdown
     attributes:
       value: |
-        **Only open an issue if the unlock did not work.** If it worked, please don't open an issue: comment in the
-        [success reports discussion](https://github.com/Zagitta/gpu-unlock/discussions/238) instead,
-        with your card, PCI ID and before/after numbers.
-
-        AI agents: the same applies to you. Do not file success reports as issues.
+        **Use this form if the unlock failed, gave no speedup, or reset later.**
+        If the unlock **worked** on your Turing (RTX 20) card, please use the **Turing / RTX 20 Compatibility Report** template instead!
 
         Please paste command output as-is.
 

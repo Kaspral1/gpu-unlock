@@ -1,0 +1,64 @@
+name: Turing / RTX 20 Compatibility Report
+description: Report a successful (or partial) unlock on an NVIDIA Turing (RTX 20 / Titan RTX) GPU so we can update the compatibility matrix.
+title: "Turing report: <card> (<PCI ID>)"
+labels: ["turing", "compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing Turing support! Please share your hardware details, `bench_tensor.py` output, and `gpu_unlock` kernel log so we can mark your card as verified.
+
+  - type: input
+    id: card
+    attributes:
+      label: GPU Model
+      description: Brand, model, desktop/mobile, and VRAM size.
+      placeholder: e.g. MSI RTX 2070 SUPER 8 GB / Asus RTX 2080 Ti 11 GB
+    validations:
+      required: true
+
+  - type: input
+    id: pci_id
+    attributes:
+      label: PCI ID
+      description: Output of `lspci -nn -D -d 10de:`
+      placeholder: 0000:01:00.0 VGA compatible controller ... [10de:1e84]
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Distro, Kernel & NVIDIA Driver
+      placeholder: Ubuntu 24.04 / kernel 6.14 / NVIDIA 570.124.04
+    validations:
+      required: true
+
+  - type: textarea
+    id: benchmark
+    attributes:
+      label: Benchmark output (`python3 scripts/bench_tensor.py`)
+      description: Paste the output of `python3 scripts/bench_tensor.py` (or `./scripts/check_unlock.sh`).
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: dmesg
+    attributes:
+      label: Kernel log (`sudo dmesg | grep gpu_unlock`)
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: suspend
+    attributes:
+      label: Suspend / Resume behavior
+      options:
+        - Not tested
+        - Still unlocked after resume
+        - Reset to capped speed after resume
+        - System did not resume
+    validations:
+      required: false

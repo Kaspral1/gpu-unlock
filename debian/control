@@ -10,7 +10,7 @@ Package: gpu-unlock-dkms
 Architecture: all
 Depends: ${misc:Depends}, dkms,
  gpu-unlock-firmware (= ${source:Version})
-Description: RTX 3090 BF16 unlock before the NVIDIA driver loads
+Description: Pre-driver Tensor Core unlock for NVIDIA GeForce RTX 20/30/40
  DKMS source for gpu_unlock, loaded ahead of nvidia on every boot. It does
  nothing unless gpu_unlock.targets= is on the kernel command line.
 

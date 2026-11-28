@@ -3,8 +3,9 @@
 Name: gpu-unlock
 Version: 2.0.0
 Release: 1%{?dist}
-Summary: RTX 3090 BF16 unlock before the NVIDIA driver loads
+Summary: Pre-driver Tensor Core unlock for NVIDIA GeForce RTX 20/30/40
 License: GPL-2.0-only
+URL: https://github.com/Kaspral1/gpu-unlock
 BuildArch: noarch
 Source0: gpu-unlock-%{version}.tar.xz
 Source1: https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/NVIDIA-kernel-module-source-%{nv}.tar.xz
@@ -18,11 +19,12 @@ BuildRequires: python3
 BuildRequires: zstd
 
 %description
-Kernel module that unlocks RTX 3090 BF16 throughput before the unmodified
+Kernel module that unlocks full-rate Tensor Core throughput on NVIDIA GeForce
+RTX 20 (Turing), RTX 30 (Ampere), and RTX 40 (Ada) GPUs before the unmodified
 NVIDIA driver binds, opted in on the kernel command line.
 
 %package dkms
-Summary: RTX 3090 BF16 unlock kernel source
+Summary: Pre-driver Tensor Core unlock kernel source
 Requires: dkms
 Requires(post): dkms
 Requires(preun): dkms
