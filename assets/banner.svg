@@ -1,46 +1,68 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="340" viewBox="0 0 1280 340" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0a0d0b"/>
-      <stop offset="1" stop-color="#132a12"/>
+      <stop offset="0" stop-color="#090d0b"/>
+      <stop offset="55%" stop-color="#0f1f14"/>
+      <stop offset="100%" stop-color="#142d16"/>
     </linearGradient>
-    <linearGradient id="hot" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#5a8f00"/>
-      <stop offset="1" stop-color="#9be22d"/>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#66a300"/>
+      <stop offset="100%" stop-color="#a8f034"/>
+    </linearGradient>
+    <linearGradient id="turing" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00b4d8"/>
+      <stop offset="100%" stop-color="#76b900"/>
     </linearGradient>
     <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.04"/>
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.035"/>
     </pattern>
   </defs>
-  <rect width="1280" height="320" rx="16" fill="url(#bg)"/>
-  <rect width="1280" height="320" rx="16" fill="url(#grid)"/>
 
-  <text x="64" y="128" font-size="76" font-weight="800" fill="#ffffff" letter-spacing="-2">gpu<tspan fill="#76b900">-</tspan>unlock</text>
-  <text x="66" y="178" font-size="28" fill="#d6e6c8">Full-speed tensor cores for GeForce RTX</text>
-  <text x="66" y="214" font-size="20" fill="#8fa386">Up to 2× FP16 / BF16 / TF32 · Linux kernel module · stock NVIDIA driver</text>
+  <rect width="1280" height="340" rx="18" fill="url(#bg)"/>
+  <rect width="1280" height="340" rx="18" fill="url(#grid)"/>
 
-  <g font-size="17" font-weight="600">
-    <rect x="66" y="246" width="96" height="34" rx="17" fill="#76b900" fill-opacity="0.16" stroke="#76b900"/>
-    <text x="114" y="269" text-anchor="middle" fill="#b6ef5c">RTX 20</text>
-    <rect x="174" y="246" width="96" height="34" rx="17" fill="#76b900" fill-opacity="0.16" stroke="#76b900"/>
-    <text x="222" y="269" text-anchor="middle" fill="#b6ef5c">RTX 30</text>
-    <rect x="282" y="246" width="96" height="34" rx="17" fill="#76b900" fill-opacity="0.16" stroke="#76b900"/>
-    <text x="330" y="269" text-anchor="middle" fill="#b6ef5c">RTX 40</text>
+  <!-- Left column: Title & Fork Identity -->
+  <rect x="64" y="42" width="236" height="28" rx="14" fill="#76b900" fill-opacity="0.16" stroke="#76b900" stroke-opacity="0.6"/>
+  <text x="182" y="61" text-anchor="middle" font-size="13" font-weight="700" fill="#b6ef5c" letter-spacing="1.2">TURING EDITION · LINUX KMOD</text>
+
+  <text x="64" y="138" font-size="74" font-weight="800" fill="#ffffff" letter-spacing="-2">gpu<tspan fill="#76b900">-</tspan>unlock</text>
+  <text x="66" y="182" font-size="25" font-weight="600" fill="#d9ecd0">Full-rate Tensor Cores for GeForce RTX 20 / 30 / 40</text>
+  <text x="66" y="216" font-size="18" fill="#8fa88b">No-FLR Turing handoff · Stock NVIDIA driver · Pre-driver initramfs unlock</text>
+
+  <g font-size="15" font-weight="700">
+    <rect x="66" y="252" width="168" height="36" rx="18" fill="#76b900" fill-opacity="0.22" stroke="#9be22d"/>
+    <text x="150" y="275" text-anchor="middle" fill="#d8ff8a">RTX 20 · Turing</text>
+
+    <rect x="246" y="252" width="154" height="36" rx="18" fill="#ffffff" fill-opacity="0.06" stroke="#4d6b47"/>
+    <text x="323" y="275" text-anchor="middle" fill="#b9ceb3">RTX 30 · Ampere</text>
+
+    <rect x="412" y="252" width="132" height="36" rx="18" fill="#ffffff" fill-opacity="0.06" stroke="#4d6b47"/>
+    <text x="478" y="275" text-anchor="middle" fill="#b9ceb3">RTX 40 · Ada</text>
   </g>
 
-  <g transform="translate(760 72)">
-    <text x="0" y="0" font-size="16" font-weight="600" fill="#8fa386" letter-spacing="1.5">BF16 MATMUL · TFLOPS</text>
+  <!-- Right column: Benchmark bars -->
+  <g transform="translate(740 52)">
+    <text x="0" y="0" font-size="14" font-weight="700" fill="#8fa88b" letter-spacing="1.6">TENSOR FP32-ACCUM THROUGHPUT (TFLOPS)</text>
 
-    <text x="0" y="44" font-size="18" font-weight="700" fill="#ffffff">RTX 3090 Ti</text>
-    <rect x="0" y="56" width="207" height="18" rx="4" fill="#3a4a38"/>
-    <text x="217" y="71" font-size="16" fill="#8fa386">88 stock</text>
-    <rect x="0" y="80" width="369" height="18" rx="4" fill="url(#hot)"/>
-    <text x="379" y="95" font-size="16" font-weight="700" fill="#b6ef5c">157</text>
+    <!-- RTX 2060 Mobile (Turing) -->
+    <text x="0" y="42" font-size="17" font-weight="700" fill="#ffffff">RTX 2060 Mobile <tspan fill="#9be22d" font-size="14" font-weight="600">(TU106M · +100%)</tspan></text>
+    <rect x="0" y="54" width="110" height="16" rx="4" fill="#324132"/>
+    <text x="120" y="67" font-size="14" fill="#8fa88b">28.6 stock</text>
+    <rect x="0" y="76" width="220" height="16" rx="4" fill="url(#turing)"/>
+    <text x="230" y="89" font-size="15" font-weight="700" fill="#b6ef5c">57.2 TFLOPS</text>
 
-    <text x="0" y="140" font-size="18" font-weight="700" fill="#ffffff">RTX 4080</text>
-    <rect x="0" y="152" width="244" height="18" rx="4" fill="#3a4a38"/>
-    <text x="254" y="167" font-size="16" fill="#8fa386">104 stock</text>
-    <rect x="0" y="176" width="454" height="18" rx="4" fill="url(#hot)"/>
-    <text x="464" y="191" font-size="16" font-weight="700" fill="#b6ef5c">193</text>
+    <!-- RTX 3090 Ti (Ampere) -->
+    <text x="0" y="132" font-size="17" font-weight="700" fill="#ffffff">RTX 3090 Ti <tspan fill="#8fa88b" font-size="14" font-weight="500">(GA102 · +80%)</tspan></text>
+    <rect x="0" y="144" width="176" height="16" rx="4" fill="#324132"/>
+    <text x="186" y="157" font-size="14" fill="#8fa88b">88 stock</text>
+    <rect x="0" y="166" width="314" height="16" rx="4" fill="url(#accent)"/>
+    <text x="324" y="179" font-size="15" font-weight="700" fill="#b6ef5c">157 TFLOPS</text>
+
+    <!-- RTX 4080 (Ada) -->
+    <text x="0" y="222" font-size="17" font-weight="700" fill="#ffffff">RTX 4080 <tspan fill="#8fa88b" font-size="14" font-weight="500">(AD103 · +87%)</tspan></text>
+    <rect x="0" y="234" width="208" height="16" rx="4" fill="#324132"/>
+    <text x="218" y="247" font-size="14" fill="#8fa88b">104 stock</text>
+    <rect x="0" y="256" width="386" height="16" rx="4" fill="url(#accent)"/>
+    <text x="396" y="269" font-size="15" font-weight="700" fill="#b6ef5c">193 TFLOPS</text>
   </g>
 </svg>

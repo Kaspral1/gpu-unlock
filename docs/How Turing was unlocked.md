@@ -57,12 +57,38 @@ This caused two failure modes in the stock Ampere-oriented Falcon loader:
 
 ---
 
-## 4. Benchmark Verification (RTX 2060 Mobile `10de:1f15`)
+## 4. Benchmark Verification & Boot Log (RTX 2060 Mobile `10de:1f15`)
 
 Tested on **Acer Nitro AN515-54** (NVIDIA GeForce RTX 2060 Mobile, 30 SMs, `TU106M`, Linux kernel `7.0.0-42-generic`, driver `615.71.09`) using `scripts/bench_tensor.py` (`mma.sync.aligned.m16n8k8`):
 
 - **FP16 → FP16 accumulate (unthrottled reference):** `58.82 TFLOPS`
 - **FP16 → FP32 accumulate (stock capped at ~28.6 TFLOPS):** `57.17 TFLOPS` (**97.2% of full hardware speed, ~2× speedup**)
+
+### Expected `dmesg` Boot Sequence (`sudo dmesg | grep gpu_unlock`)
+
+```text
+[    0.980499] pci 0000:01:00.0: gpu_unlock: stage=claim device=0x1f15 family=TU102/TU104/TU106 cmd=0x102 original=0x102 bar_len=0x1000000 region=1 enabled=0 master=0
+[    0.980510] pci 0000:01:00.0: gpu_unlock: stage=layout fb=0x180000000 vga=0x17ff00000 frts=0x100000 wpr=0x177800000..0x17ff00000 boot=0x17fdff000 gsp=0x17e200000 heap=0x177900000
+[    0.991917] pci 0000:01:00.0: gpu_unlock: stage=dma booter=59136 payload=0xfa00 pages=7179 meta=0xfffcf000 sig=0xfffd0000 stock=0xfffce000 boot=0xfffcd000
+[    0.991930] pci 0000:01:00.0: gpu_unlock: stage=gfw plm=0xffffff8f ss0=0x4010 ss1=0x4 wpr2_hi=0x0
+[    1.353047] pci 0000:01:00.0: gpu_unlock: stage=fwsec version=2 fuse=0x0 ver=0 scratch=0x0 wpr2_raw=0x17fe000:0x17fee00 frts=0x17fe000:0x17fee00
+[    1.353071] pci 0000:01:00.0: gpu_unlock: stage=publish meta=0xfffcf000 sig=0xfffd0000 size=0xfa00 radix=0xfffcc000
+[    1.390038] pci 0000:01:00.0: gpu_unlock: pass=1/2 attempt=1 target=0x409650 value=0xffffffff before=0xffffff8f after=0xffffffff wpr2=0x1778000:0x0 reset_plm=0xff mbox=0x0:0x0 ret=0
+[    1.390062] pci 0000:01:00.0: gpu_unlock: pass=2/2 attempt=1 target=0x1fa828 value=0x0 before=0xffffff8f after=0x0 wpr2=0x1778000:0x0 reset_plm=0xff mbox=0x0:0x0 ret=0
+[    1.390080] pci 0000:01:00.0: gpu_unlock: stage=host ss0=0x88888888 ss1=0x8 plm_feat=0xffffffff plm_wpr_cfg=0xbadf5040
+[    1.390103] pci 0000:01:00.0: gpu_unlock: stage=quiesce-turing wpr2=0x1778000:0x0 ss0=0x88888888 ss1=0x8 readout=0x0 plm=0xffffffef cmd=0x102 devsta=0x19 chip=0x166000a1
+[    1.406221] pci 0000:01:00.0: gpu_unlock: stage=handoff ret=0 state=4 retained=0 pages=0/7179 cleanup=0
+[    1.406233] pci 0000:01:00.0: gpu_unlock: unlocked
+```
+
+### Laptop Note (Preventing `D3cold` Power-Off Reset)
+
+On Optimus laptops, runtime power management can power down the dGPU into `D3cold` when idle, which silently resets `SS0`/`SS1` back to factory defaults until the next reboot. To prevent this:
+
+```sh
+echo "options nvidia NVreg_DynamicPowerManagement=0x00" | sudo tee /etc/modprobe.d/99-nvidia-no-d3cold.conf
+sudo update-initramfs -u
+```
 
 ---
 

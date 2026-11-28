@@ -1,296 +1,280 @@
-![gpu-unlock: full-speed tensor cores for GeForce RTX](assets/banner.svg)
+<div align="center">
 
-### Your GeForce runs AI at half speed. This fixes it.
+![gpu-unlock: full-speed Tensor Cores for GeForce RTX 20, 30 and 40](assets/banner.svg)
 
-![Version](https://img.shields.io/badge/version-2.0.0--turing-76b900)![RTX 20 | 30 | 40](https://img.shields.io/badge/GeForce-RTX%2020%20%7C%2030%20%7C%2040-76b900?logo=nvidia&logoColor=white)![Turing Support](https://img.shields.io/badge/Turing%20(RTX%2020)-Working-brightgreen)![Linux](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)![License GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue)![Stars](https://img.shields.io/github/stars/Kaspral1/gpu-unlock?style=flat&color=yellow)[![Sponsor](https://img.shields.io/badge/Sponsor-Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/kaspral)
+# gpu-unlock (Turing Fork)
 
-> [!IMPORTANT]
-> **About this fork (`Kaspral1/gpu-unlock`):** This is a fork of [`Zagitta/gpu-unlock`](https://github.com/Zagitta/gpu-unlock) that adds **working full-speed Tensor Core unlock support for NVIDIA Turing (RTX 20 series: TU102 / TU104 / TU106 / TU106M)**, verified on **RTX 2060 Mobile (`10de:1f15`)** (`28.6 → 57.2 TFLOPS`, +100%).
->
-> **Key differences from upstream:**
-> - Working Turing unlock with dual-write V67 ROP payload (`TU_FEAT_PLM` + `WPR2_ADDR_HI` clear) and **no-FLR handoff** (so VBIOS `devinit` does not wipe the unlock).
-> - Fixed Turing GSP Falcon `CPUCTL.HALTED` pre-start handling and 32-bit/47-bit DMA masks for FWSEC-FRTS / SEC2 Booter.
-> - Added PCI ID `0x1f15` (RTX 2060 Mobile `TU106M`).
-> - Included standalone CUDA PTX Tensor Core benchmark (`scripts/bench_tensor.py`) and Turing technical write-ups ([EN](docs/How%20Turing%20was%20unlocked.md) / [PL](docs/Jak_odblokowano_Turing_RTX2060_PL.md)).
->
-> **Disclaimer — Use at your own risk:** Turing support is experimental and modifies low-level GPU registers via a kernel module at boot. This software is provided **"as is"**, without warranty of any kind, under the **GPL-2.0** license. Use entirely at your own risk.
+Full-rate Tensor Core unlock for NVIDIA GeForce RTX 20 (Turing), RTX 30 (Ampere) and RTX 40 (Ada) on Linux with the stock NVIDIA driver.
 
-**Up to 2× FP16 / BF16 / TF32 tensor throughput** · **+25–55% LLM prefill** · **+25–50% fine-tuning** · **+30–55% image generation**
+[![Release](https://img.shields.io/badge/release-v2.0.0--turing-76b900)](https://github.com/Kaspral1/gpu-unlock/releases)
+[![Turing](https://img.shields.io/badge/RTX%2020%20Turing-Verified%20on%20TU106M-brightgreen)](#proof-of-work)
+[![Ampere and Ada](https://img.shields.io/badge/RTX%2030%20%7C%2040-Supported-76b900?logo=nvidia&logoColor=white)](#supported-gpus)
+[![Linux](https://img.shields.io/badge/platform-Linux-0078d4?logo=linux&logoColor=white)](#quick-start)
+[![License](https://img.shields.io/badge/license-GPL--2.0-blue)](licenses/GPL-2.0.txt)
+[![Stars](https://img.shields.io/github/stars/Kaspral1/gpu-unlock?style=flat&color=yellow)](https://github.com/Kaspral1/gpu-unlock/stargazers)
+[![Buy Me a Coffee](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/kaspral)
 
-[Supported GPUs](#supported-gpus) · [Benchmarks](#what-you-get) · [Install](#how-to-install) · [FAQ](#faq) · [Support](#support-me)
+[Proof of Work](#proof-of-work) · [Turing Changes](#turing-changes) · [Supported GPUs](#supported-gpus) · [Quick Start](#quick-start) · [How It Works](#how-it-works) · [FAQ](#faq) · [Support](#support)
+
+**Turing Technical Docs:**
+[English](docs/How%20Turing%20was%20unlocked.md) · [Polski](docs/Jak_odblokowano_Turing_RTX2060_PL.md) · [中文](docs/turing_unlock_ZH.md) · [Deutsch](docs/turing_unlock_DE.md) · [Español](docs/turing_unlock_ES.md) · [日本語](docs/turing_unlock_JA.md) · [Français](docs/turing_unlock_FR.md)
+
+</div>
 
 ---
 
-NVIDIA ships GeForce cards with their tensor cores capped to **half speed** for
-FP16, BF16 and TF32 math with FP32 accumulation, which is what nearly all AI
-training and unquantized inference uses. The same silicon sold as an RTX A-series
-or professional card runs at full rate. `gpu_unlock` removes that cap at boot,
-before the stock NVIDIA driver loads. No patched driver, no VBIOS flash, nothing
-to redo when NVIDIA releases a new driver.
+## Overview
+
+Consumer GeForce cards ship with FP32-accumulation Tensor Core throughput capped to half speed compared to equivalent Quadro, Tesla and RTX A-series silicon. This slows down PyTorch AMP training, LLM prefill, LoRA fine-tuning, FlashAttention and Stable Diffusion / ComfyUI workloads.
+
+`gpu_unlock` is a Linux kernel module loaded early in `initramfs`, before `nvidia.ko` binds the GPU. It lifts the hardware speed cap and hands the device off to the stock, unmodified NVIDIA driver. No patched driver, no VBIOS flash and nothing to redo after driver updates.
+
+> [!NOTE]
+> Maintained fork of [`Zagitta/gpu-unlock`](https://github.com/Zagitta/gpu-unlock) adding working NVIDIA Turing (`TU102` / `TU104` / `TU106` / `TU106M`) support while keeping upstream Ampere and Ada support intact.
+
+> [!WARNING]
+> **Use at your own risk:** Turing support is experimental and modifies low-level GPU registers at boot. Provided "as is", without warranty of any kind, under GPL-2.0.
+
+---
+
+## Proof of Work
+
+Tested on **Acer Nitro AN515-54** with **NVIDIA GeForce RTX 2060 Mobile (`10de:1f15`, `TU106M`, 30 SMs)**, Linux kernel `7.0.0-42-generic` and stock NVIDIA driver `615.71.09`.
+
+### Kernel Boot Log (`sudo dmesg | grep gpu_unlock`)
+
+```text
+[    0.980499] pci 0000:01:00.0: gpu_unlock: stage=claim device=0x1f15 family=TU102/TU104/TU106 cmd=0x102 original=0x102 bar_len=0x1000000 region=1 enabled=0 master=0
+[    0.980510] pci 0000:01:00.0: gpu_unlock: stage=layout fb=0x180000000 vga=0x17ff00000 frts=0x100000 wpr=0x177800000..0x17ff00000 boot=0x17fdff000 gsp=0x17e200000 heap=0x177900000
+[    0.991917] pci 0000:01:00.0: gpu_unlock: stage=dma booter=59136 payload=0xfa00 pages=7179 meta=0xfffcf000 sig=0xfffd0000 stock=0xfffce000 boot=0xfffcd000
+[    0.991930] pci 0000:01:00.0: gpu_unlock: stage=gfw plm=0xffffff8f ss0=0x4010 ss1=0x4 wpr2_hi=0x0
+[    1.353047] pci 0000:01:00.0: gpu_unlock: stage=fwsec version=2 fuse=0x0 ver=0 scratch=0x0 wpr2_raw=0x17fe000:0x17fee00 frts=0x17fe000:0x17fee00
+[    1.353071] pci 0000:01:00.0: gpu_unlock: stage=publish meta=0xfffcf000 sig=0xfffd0000 size=0xfa00 radix=0xfffcc000
+[    1.390038] pci 0000:01:00.0: gpu_unlock: pass=1/2 attempt=1 target=0x409650 value=0xffffffff before=0xffffff8f after=0xffffffff wpr2=0x1778000:0x0 reset_plm=0xff mbox=0x0:0x0 ret=0
+[    1.390062] pci 0000:01:00.0: gpu_unlock: pass=2/2 attempt=1 target=0x1fa828 value=0x0 before=0xffffff8f after=0x0 wpr2=0x1778000:0x0 reset_plm=0xff mbox=0x0:0x0 ret=0
+[    1.390080] pci 0000:01:00.0: gpu_unlock: stage=host ss0=0x88888888 ss1=0x8 plm_feat=0xffffffff plm_wpr_cfg=0xbadf5040
+[    1.390103] pci 0000:01:00.0: gpu_unlock: stage=quiesce-turing wpr2=0x1778000:0x0 ss0=0x88888888 ss1=0x8 readout=0x0 plm=0xffffffef cmd=0x102 devsta=0x19 chip=0x166000a1
+[    1.406221] pci 0000:01:00.0: gpu_unlock: stage=handoff ret=0 state=4 retained=0 pages=0/7179 cleanup=0
+[    1.406233] pci 0000:01:00.0: gpu_unlock: unlocked
+```
+
+### CUDA PTX Tensor Core Benchmark (`python3 scripts/bench_tensor.py`)
+
+Runs `mma.sync.aligned.m16n8k8` PTX kernels comparing unthrottled `FP16 -> FP16` against `FP16 -> FP32` accumulation:
+
+```text
+# Before unlock (stock GeForce RTX 2060 Mobile, peak boost):
+GPU: NVIDIA GeForce RTX 2060 (30 SMs)
+Tensor MMA FP16 -> FP16 accumulate (100% ref): 58.82 TFLOPS
+Tensor MMA FP16 -> FP32 accumulate:            28.60 TFLOPS
+FP32-accum / FP16-accum ratio:                 48.6% [CAPPED (stock GeForce)]
+
+# After unlock (gpu_unlock active, peak boost):
+GPU: NVIDIA GeForce RTX 2060 (30 SMs)
+Tensor MMA FP16 -> FP16 accumulate (100% ref): 58.82 TFLOPS
+Tensor MMA FP16 -> FP32 accumulate:            57.17 TFLOPS
+FP32-accum / FP16-accum ratio:                 97.2% [UNLOCKED]
+```
+
+Under thermal or power-limited clocks, absolute TFLOPS scales with boost clock while the `FP32-accum / FP16-accum` ratio stays at 97-100% instead of ~50%.
+
+---
+
+## Turing Changes
+
+1. **No-FLR handoff (`unlock_610.c`, `recipes.c`):** On Turing, `pcie_flr()` runs VBIOS `devinit`, which immediately resets `SS0`/`SS1`. This fork uses a dual-write V67 ROP chain that opens `TU_FEAT_PLM` (`0x409650 = 0xffffffff`) and clears `WPR2_ADDR_HI` (`0x1fa828 = 0x0`) from Heavy-Secure mode, releases ACR mutex 3, zeroes `SEC2_MAILBOX0`, relocks PLM and hands off to `nvidia.ko` without FLR.
+2. **GSP Falcon and DMA fixes (`falcon.c`, `unlock_610.c`):** Handles pre-start `GSP_CPUCTL=0x10` (`HALTED`), polls `WPR2_ADDR_HI` before post-FRTS halt, uses the Turing GSP heap formula and sets coherent DMA masks (`32-bit` for `FWSEC-FRTS`, `47-bit` for `SEC2 Booter`).
+3. **RTX 2060 Mobile PCI ID (`0x1f15`):** Added `TU106(0x1f15)` alongside `TU102`/`TU104`/`TU106` desktop/mobile IDs, plus error-path FLR recovery in `unlock_transaction_unwind()`.
+4. **Verification tools and docs:** Added portable [`scripts/bench_tensor.py`](scripts/bench_tensor.py), [`scripts/check_unlock.sh`](scripts/check_unlock.sh) and Turing technical documentation in 7 languages.
 
 ---
 
 ## Supported GPUs
 
-| Generation                | Cards                                                                                                                  | Status                    |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| **Ampere** (RTX 30)       | RTX 3050, 3060, 3060 Ti, 3070, 3070 Ti, 3080, 3080 Ti, 3090, 3090 Ti, plus RTX 3070/3080 Laptop GPUs                   | Stable, 100+ user reports |
-| **Ada Lovelace** (RTX 40) | RTX 4060, 4060 Ti, 4070, 4070 SUPER, 4070 Ti, 4070 Ti SUPER, 4080, 4080 SUPER, 4090, 4090 D, RTX 4050/4060 Laptop GPUs | Experimental              |
-| **Turing** (RTX 20)       | RTX 2060 (Desktop & Mobile `10de:1f15`), 2060 SUPER, 2070, 2070 SUPER, 2080, 2080 SUPER, 2080 Ti, Titan RTX            | Verified on TU106M (`0x1f15`) |
-| Blackwell (RTX 50)        |                                                                                                                        | Not supported             |
+Exact PCI IDs are defined in [`kernel/gpu_unlock/recipes.c`](kernel/gpu_unlock/recipes.c). Linux only (for Windows see [FAQ](#faq)).
 
-Laptops only stay unlocked if the dedicated GPU is never fully powered off.  
-Many laptops power it down when idle, which silently resets the unlock. Turning  
-off runtime power management with `options nvidia NVreg_DynamicPowerManagement=0x00`
-in `/etc/modprobe.d/` helps on some models, but expect mixed results.
+| Generation | Accelerated Precision (FP32 accum) | Cards in `recipes.c` | Status |
+| :--- | :--- | :--- | :--- |
+| **Turing (RTX 20)** | **FP16 -> FP32** | RTX 2060 (Desktop & Mobile `10de:1f15`), 2060 SUPER, 2070, 2070 SUPER, 2080, 2080 SUPER, 2080 Ti, Titan RTX | **Verified on `TU106M` (`0x1f15`)**. Reports welcome for RTX 2070 / 2080 / 2080 Ti. |
+| **Ampere (RTX 30)** | **FP16 / BF16 / TF32 -> FP32** | RTX 3050, 3060, 3060 Ti, 3070, 3070 Ti, 3080, 3080 Ti, 3090, 3090 Ti, RTX 3070/3080 Laptop | Stable (upstream) |
+| **Ada Lovelace (RTX 40)** | **FP16 / BF16 / TF32 -> FP32** | RTX 4060, 4060 Ti, 4070, 4070 SUPER, 4070 Ti, 4070 Ti SUPER, 4080, 4080 SUPER, 4090, 4090 D, RTX 4050/4060 Laptop | Experimental (upstream) |
+| **Blackwell (RTX 50)** | None | None | Not supported |
 
-The exact PCI device IDs are in [`kernel/gpu_unlock/recipes.c`](kernel/gpu_unlock/recipes.c).
-Linux only. For Windows see the [FAQ](#faq).
-
----
-
-## What you get
-
-The tensor core rate doubles. How much of that you see depends on how much of
-your workload is FP16/BF16/TF32 matrix math, and on whether the card has the
-power headroom to run it.
-
-Dense matrix multiply (FP32 accumulation, stock power limits):
-
-| Card | BF16 / FP16 (FP32 accum) before | After | Gain |
-| --- | --- | --- | --- |
-| RTX 2060 Mobile (`10de:1f15`) | 28.6 TFLOPS | 57.2 TFLOPS | +100% (97.2% of FP16-accum rate) |
-| RTX 3060 12 GB | 27 TFLOPS | 51 TFLOPS | +87% |
-| RTX 3060 Ti | 37 TFLOPS | 68 TFLOPS | +82% |
-| RTX 3070 | 40 TFLOPS | 72 TFLOPS | +81% |
-| RTX 3080 10 GB | 65 TFLOPS | 113 TFLOPS | +73% |
-| RTX 3090 | 75 TFLOPS | 125 TFLOPS | +65% |
-| RTX 3090 Ti (450 W) | 88 TFLOPS | 157 TFLOPS | +80% |
-| RTX 4070 Ti | 81 TFLOPS | 150 TFLOPS | +84% |
-| RTX 4080 | 104 TFLOPS | 193 TFLOPS | +87% |
-| RTX 4090 | 165 TFLOPS | 329 TFLOPS | +100% (peak MMA rate) |
-
-The RTX 4090 runs out of power before it runs out of tensor cores, so large
-GEMMs at stock power limits gain much less than the peak rate suggests.
-
-Real workloads:
-
-| Workload | Typical speedup |
-| --- | --- |
-| LLM prefill / prompt processing, FP16/BF16 or AWQ/GPTQ (vLLM, PyTorch, Transformers) | +25–55% |
-| Time to first token | 25–30% lower |
-| LoRA and full fine-tuning in BF16 | +25–50% |
-| Image generation, FP16/BF16 (SDXL, SD 1.5, Krea, DiT models in ComfyUI) | +30–55% |
-| Video generation, BF16 compute (Wan 2.2) | +15–20% |
-| FlashAttention / SDPA kernels | +50–60% |
-| llama.cpp / Ollama with quantized GGUF | 0–15%, mostly at long context |
-| LLM decode / token generation (memory bound) | No change |
-| INT8, FP8 and INT4 models | No change |
-| Gaming and FP32 CUDA | No change |
-
-Outputs are bit-identical before and after; only the speed changes. These
-numbers come from the [compatibility reports](https://github.com/Zagitta/gpu-unlock/issues)
-users have filed, where you can find full benchmark details and post your own.
+> [!TIP]
+> **Laptop / Optimus users:** If the dGPU enters `D3cold` while idle, hardware resets `SS0`/`SS1` until the next reboot. Disable runtime PM to keep the unlock active:
+> ```sh
+> echo "options nvidia NVreg_DynamicPowerManagement=0x00" | sudo tee /etc/modprobe.d/99-nvidia-no-d3cold.conf
+> ```
+> Then rebuild initramfs (`sudo update-initramfs -u`, `sudo mkinitcpio -P` or `sudo dracut --regenerate-all --force`).
 
 ---
 
-## How to install
+## Benchmarks
 
-First run:
+### Peak Tensor Core Throughput (FP32 Accumulation, Stock Power Limits)
+
+| GPU | Arch | Stock | Unlocked | Gain |
+| :--- | :--- | :---: | :---: | :--- |
+| **RTX 2060 Mobile (`10de:1f15`)** | Turing (`TU106M`) | 28.6 TFLOPS | **57.2 TFLOPS** | **+100%** (97.2% of FP16-accum ref) |
+| RTX 3060 12 GB | Ampere (`GA106`) | 27 TFLOPS | 51 TFLOPS | +87% |
+| RTX 3060 Ti | Ampere (`GA104`) | 37 TFLOPS | 68 TFLOPS | +82% |
+| RTX 3070 | Ampere (`GA104`) | 40 TFLOPS | 72 TFLOPS | +81% |
+| RTX 3080 10 GB | Ampere (`GA102`) | 65 TFLOPS | 113 TFLOPS | +73% |
+| RTX 3090 | Ampere (`GA102`) | 75 TFLOPS | 125 TFLOPS | +65% |
+| RTX 3090 Ti (450 W) | Ampere (`GA102`) | 88 TFLOPS | 157 TFLOPS | +80% |
+| RTX 4070 Ti | Ada (`AD104`) | 81 TFLOPS | 150 TFLOPS | +84% |
+| RTX 4080 | Ada (`AD103`) | 104 TFLOPS | 193 TFLOPS | +87% |
+| RTX 4090 | Ada (`AD102`) | 165 TFLOPS | 329 TFLOPS | +100% (peak MMA; power-limited on large GEMMs) |
+
+### Real Workloads
+
+| Workload | Typical Speedup |
+| :--- | :--- |
+| LLM prefill / prompt processing (FP16/BF16, AWQ/GPTQ in vLLM / PyTorch / Transformers) | **+25-55%** (25-30% lower TTFT) |
+| LoRA and full fine-tuning (PyTorch AMP FP16 / BF16) | **+25-50%** |
+| Image generation (SD 1.5, SDXL, DiT / Flux in ComfyUI) | **+30-55%** |
+| FlashAttention / SDPA kernels | **+50-60%** |
+| Video generation (Wan 2.2) | **+15-20%** |
+| `llama.cpp` / Ollama (quantized GGUF) | 0-15% (mostly long-context prefill) |
+| LLM token decode (memory-bound), INT8/FP8/INT4, gaming and FP32 CUDA | No change |
+
+Outputs are bit-identical before and after.
+
+---
+
+## Quick Start
+
+### 1. Build and Install
 
 ```sh
-git clone https://github.com/Kaspral1/gpu-unlock
+git clone https://github.com/Kaspral1/gpu-unlock.git
 cd gpu-unlock
 make install
 ```
 
-Then append `gpu_unlock.targets=all` to your kernel command line, keeping
-existing options:
+`make install` detects Debian/Ubuntu/Mint (`make install-deb`), Arch/CachyOS (`make install-arch`) and Fedora/RHEL (`make install-rpm`), builds the DKMS module and pinned firmware assets, installs them and rebuilds initramfs.
 
-- **GRUB (Debian/Ubuntu/Mint):** add it inside `GRUB_CMDLINE_LINUX_DEFAULT`
-in `/etc/default/grub`, then run `sudo update-grub`.
-- **GRUB (Arch/CachyOS):** same edit, then run
-`sudo grub-mkconfig -o /boot/grub/grub.cfg`.
-- **Fedora/RHEL:** run
-`sudo grubby --update-kernel=ALL --args="gpu_unlock.targets=all"`.
-- **systemd-boot:** append it to the `options` line in your boot entry
-(`bootctl status` shows its location).
-- **UKI / generated entries:** add it to `/etc/kernel/cmdline` and regenerate
-your boot images/entries (e.g. `sudo mkinitcpio -P` for mkinitcpio UKIs).
+### 2. Enable via Kernel Command Line
 
-### Verify Unlock & Run Tensor Core Benchmark
+The module is opt-in and does nothing until you add `gpu_unlock.targets=all` (or specific PCI addresses such as `gpu_unlock.targets=0000:01:00.0`) to your kernel parameters:
 
-After rebooting, verify that `gpu_unlock` succeeded in `dmesg` and run the standalone CUDA PTX Tensor Core benchmark (`scripts/bench_tensor.py`):
+- **GRUB (Debian / Ubuntu / Linux Mint):** add `gpu_unlock.targets=all` to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`, then run `sudo update-grub`.
+- **GRUB (Arch / CachyOS):** same edit, then run `sudo grub-mkconfig -o /boot/grub/grub.cfg`.
+- **Fedora / RHEL:** `sudo grubby --update-kernel=ALL --args="gpu_unlock.targets=all"`.
+- **systemd-boot:** append to the `options` line in your boot entry (`bootctl status` shows its path).
+- **UKI:** add to `/etc/kernel/cmdline` and regenerate images (for example `sudo mkinitcpio -P`).
+
+### 3. Reboot and Verify
 
 ```sh
+./scripts/check_unlock.sh
+# or run separately:
 sudo dmesg | grep gpu_unlock
 python3 scripts/bench_tensor.py
 ```
 
-For detailed technical write-ups on how the unlock works internally:
-- [How Ampere was unlocked](docs/How%20Ampere%20was%20unlocked.md)
-- [How Turing (TU102/TU104/TU106/TU106M) was unlocked](docs/How%20Turing%20was%20unlocked.md)
-- [Dokumentacja techniczna odblokowania Turing RTX 2060 (PL)](docs/Jak_odblokowano_Turing_RTX2060_PL.md)
+---
 
-# FAQ
+## How It Works
 
-- Q: Do you have a website/coin/installer?  
-A: No this is the one and only OG source for gpu-unlock. Crypto, websites, installers and what else is not associated with this project or the developer in any way shape or form. 
-- Q: Does this depend on a specific driver version? I see `610.43.03` is pinned.  
-A: No the driver is only fetched to extract firmware this unlock depends on    
-- Q: What about Windows?  
-A: I don't run windows and don't plan to maintain it but [https://github.com/impacifist/Windows-GPU-UNLOCK](https://github.com/impacifist/Windows-GPU-UNLOCK) has built a port, YMMV.   
-There are windows installer's floating around but I would recommend being ++**very**++ careful with those.
-- Q: What about Blackwell (RTX 50)?  
-A: Not supported and unlikely to happen.    
-- Q: Why did Nvidia handicap my GPU?  
-A: Market segmentation, they want businesses to purchase the professional cards without these limitations at significantly higher prices.
-- Q: Does this hurt my GPU?  
-A: It's very unlikely, this only unlocks a small handicap Nvidia has put in place to differentiate datacenter and professional cards from consumer versions. It may heat up your GPU slightly because it now does more compute but the standard throttling and power management remains completely intact and should downclock.    
-- Q: How can I assist?  
-A: Please consider [donating](#support-me) so I can purchase more GPUs <3
+`gpu_unlock` combines the `cmpunlocker` V67 SEC2 Booter stack-overflow technique with pre-driver `initramfs` timing. Because Turing and Ampere/Ada differ in register layout and reset behavior, the module uses separate handoff paths:
 
-## Local build
+| Stage | Turing (`TU102` / `TU104` / `TU106`) | Ampere (`GA10x`) & Ada (`AD10x`) |
+| :--- | :--- | :--- |
+| **Speed selector registers** | `PGRAPH` broadcast: `PLM` `0x409650`, `SS0` `0x40960c`, `SS1` `0x409634` | `0x8238xx` aperture |
+| **DMA masks** | `32-bit` for `FWSEC-FRTS`, `47-bit` for `SEC2 Booter` | `32-bit` |
+| **V67 ROP writes (L3 HS)** | Dual write: `0x409650 = 0xffffffff` and `0x1fa828 = 0x0` (clears `WPR2` directly) | Opens `FEAT_PLM` |
+| **Host writes** | `SS0 = 0x88888888`, `SS1 = 0x8`, then relocks `TU_FEAT_PLM` | `SS0 = 0x88888888`, `SS1 = 0x8` |
+| **Post-unlock handoff** | **No-FLR handoff** (`quiesce-turing`), skips `pcie_flr()` so VBIOS `devinit` does not wipe `SS0`/`SS1` | **`pcie_flr()`** to tear down `WPR2` (`SS0`/`SS1` survive FLR on Ampere/Ada) |
 
-Every build downloads the NVIDIA/CachyOS inputs over HTTPS and generates
-firmware only in the build directory and the binary package. All three formats install through the same `make install-*`
-targets. Packages are built from the working tree, uncommitted changes included.
+Technical documentation:
+- Turing: [English](docs/How%20Turing%20was%20unlocked.md) · [Polski](docs/Jak_odblokowano_Turing_RTX2060_PL.md) · [中文](docs/turing_unlock_ZH.md) · [Deutsch](docs/turing_unlock_DE.md) · [Español](docs/turing_unlock_ES.md) · [日本語](docs/turing_unlock_JA.md) · [Français](docs/turing_unlock_FR.md)
+- Ampere: [How Ampere was unlocked](docs/How%20Ampere%20was%20unlocked.md)
 
-Build, install build dependencies, and install the packages in one step
-(asks for your sudo password):
+---
+
+<details>
+<summary><strong>Boot Flow, Target Selection, Suspend/Resume and Uninstall</strong></summary>
+
+### Initramfs Loading
+Packages place `gpu_unlock` and its extracted firmware into initramfs so it runs ahead of `nvidia`:
+- **mkinitcpio:** `/etc/mkinitcpio.conf.d/zz-gpu-unlock.conf` inserts `gpu_unlock` before `nvidia` in `MODULES` (custom `-c` configs ignore drop-ins, so add `gpu_unlock` before `nvidia` manually there).
+- **initramfs-tools:** `/usr/share/initramfs-tools/modules.d/gpu-unlock.conf`.
+- **dracut:** `/usr/lib/dracut/dracut.conf.d/gpu-unlock.conf`.
+
+No `softdep nvidia pre:` rule is used because `kmod` only honors the first `softdep nvidia` line it reads.
+
+### Target Selection
+```text
+gpu_unlock.targets=all                          # every supported unbound card
+gpu_unlock.targets=0000:01:00.0                 # single card (full PCI ID from `lspci -D`)
+gpu_unlock.targets=0000:21:00.0,0000:22:00.0    # comma-separated list
+```
+Cards are unlocked concurrently (~1 second total). Loading the module manually after `nvidia` binds a card is a no-op.
+
+### Suspend / Resume
+Suspend to RAM powers the GPU off and resets speed selectors. On resume, `gpu_unlock`'s kernel suspend notifier runs before `nvidia` resumes (`NVreg_UseKernelSuspendNotifiers=1`). Pass `gpu_unlock.resume=0` or write `0` to `/sys/module/gpu_unlock/parameters/resume` to disable resume re-unlocking. Hibernation is not covered.
+
+### Disabling / Uninstalling
+- **One-off disable:** remove `gpu_unlock.targets=...` in your bootloader edit screen (`e` in GRUB).
+- **Permanent disable:** remove `gpu_unlock.targets=...` from your bootloader config and regenerate it, or uninstall `gpu-unlock-dkms` and `gpu-unlock-firmware`.
+
+</details>
+
+<details>
+<summary><strong>Local Build and Packaging</strong></summary>
+
+Every build fetches pinned NVIDIA (`610.43.03`) inputs over HTTPS (cached in `~/.cache/gpu-unlock/inputs`; override with `INPUTS=`) and generates firmware only in the build directory and binary package:
 
 ```sh
-make install        # detect the distribution and select an installer
+make install        # auto-detect distro and install
 make install-arch   # makepkg -sif
 make install-deb    # apt-get build-dep, dpkg-buildpackage, apt-get install
 make install-rpm    # dnf builddep, rpmbuild, dnf install
 ```
 
-`make install` uses `/etc/os-release` (`ID`, then `ID_LIKE`) to detect Arch,
-Debian/Ubuntu, or Fedora/RHEL/CentOS families. The RPM installer requires DNF.
-For other distributions, select a compatible explicit target above.
+Build-only targets (`make arch`, `make deb`, `make rpm`) write packages to `build/deb` and `build/rpm`. For clean-chroot Debian builds (`sbuild`/`pbuilder`), set `GPU_UNLOCK_INPUTS` to your cache directory. Source archives (`make dist`, `.dsc`, `.nosrc.rpm`) contain no NVIDIA binaries.
 
-`make arch`, `make deb` and `make rpm` only build. Debian and RPM packages go
-to `build/deb` and `build/rpm`. The NVIDIA inputs are cached in
-`~/.cache/gpu-unlock/inputs` (`make inputs`; override with `INPUTS=`).
-`dpkg-buildpackage` itself never uses the network, so a clean-chroot build (sbuild or
-pbuilder) needs `GPU_UNLOCK_INPUTS` pointing at that cache.
-The `make dist` archive, the Debian source package and the `.nosrc.rpm`
-contain no NVIDIA archives or generated firmware.
+</details>
 
-## How it works
+---
 
-This Linux kernel module combines the cmpunlocker's V67/PLM technique with the
-pre-driver timing of the UEFI approach. At boot it runs the unlock, writes the
-speed selectors (SS0 `0x88888888`, which selects the full BF16 rate, and the
-4-bit SS1 `0x8` IMLA4) and performs an FLR before the unmodified NVIDIA driver
-binds the card. It is neither a UEFI application nor a patched NVIDIA driver.
+## FAQ
 
-## Boot flow and opt-in
+- **Q: Is this associated with any website, crypto token or third-party installer?**  
+  **A:** No. `Kaspral1/gpu-unlock` is a maintained fork of [`Zagitta/gpu-unlock`](https://github.com/Zagitta/gpu-unlock) that adds working NVIDIA Turing (RTX 20) support. There is no website, token or prebuilt binary installer. Build directly from source. Voluntary donation links are listed in [Support](#support).
+- **Q: Does this require NVIDIA driver `610.43.03`?**  
+  **A:** No. `610.43.03` is downloaded at build time only to extract the signed firmware and booter blobs used during pre-driver unlock. Any normal NVIDIA Linux driver works (tested with `615.71.09`, `570.x`, etc.).
+- **Q: Does it work on RTX 2070, 2080, 2080 SUPER, 2080 Ti or Titan RTX?**  
+  **A:** All `TU102`/`TU104`/`TU106` recipes and PCI IDs are included in `recipes.c`, and the unlock path is verified on `TU106M` (RTX 2060 Mobile). If you test another RTX 20 card, please [open a Turing Compatibility Report](https://github.com/Kaspral1/gpu-unlock/issues/new/choose) with your `bench_tensor.py` output.
+- **Q: What about Windows?**  
+  **A:** Linux only. A separate community Windows port exists at [`impacifist/Windows-GPU-UNLOCK`](https://github.com/impacifist/Windows-GPU-UNLOCK) (YMMV; be **very** careful with unofficial binary installers).
+- **Q: What about Blackwell (RTX 50)?**  
+  **A:** Not supported and unlikely to happen.
+- **Q: Can this hurt my GPU?**  
+  **A:** Very unlikely. It only removes a software/firmware throughput cap to match Quadro/Tesla silicon. Higher Tensor Core load can draw slightly more power under AI workloads, while standard NVIDIA thermal throttling, voltage limits and power limits remain intact.
 
-The packages put `gpu_unlock` and its firmware in the initramfs and load it
-there, before `nvidia` can bind a card:
+---
 
-- **mkinitcpio:** `/etc/mkinitcpio.conf.d/zz-gpu-unlock.conf` inserts
-`gpu_unlock` right before `nvidia` in `MODULES`, so a display card is blank
-for as short a time as possible. Without `nvidia` in the image, it goes
-last and still runs before an `nvidia` loaded from the root filesystem.
-Images are rebuilt on install. mkinitcpio ignores drop-ins for an image
-built with `-c <config>` or a preset `_config`; put `gpu_unlock` right
-before `nvidia` in that config's `MODULES` yourself.
-- **initramfs-tools:** `/usr/share/initramfs-tools/modules.d/gpu-unlock.conf`.
-- **dracut:** `/usr/lib/dracut/dracut.conf.d/gpu-unlock.conf`.
+## Compatibility Reports
 
-With initramfs-tools and dracut, the module is built for every installed
-kernel that has headers, and those kernels' images are rebuilt on install
-and again on removal. Kernels installed later get the module and a new
-image from the kernel's own install hooks.
+If you test this fork on an **RTX 2060 / 2070 / 2080 / 2080 Ti / Titan RTX**:
+- **Working unlock:** open a [Turing / RTX 20 Compatibility Report](https://github.com/Kaspral1/gpu-unlock/issues/new/choose) with `python3 scripts/bench_tensor.py` and `sudo dmesg | grep gpu_unlock`.
+- **Unlock failed or lost speedup:** open an [Unlock Failure Report](https://github.com/Kaspral1/gpu-unlock/issues/new/choose).
 
-There is no `softdep nvidia pre:` rule: kmod honours only the first
-`softdep nvidia` line it reads, so other packages' rules (`nvidia-utils`,
-`gddr6_hwmon`) would silently override it, or it would override theirs.
+---
 
-The module does nothing unless the kernel command line opts in:
+## License and Support
 
-```
-gpu_unlock.targets=all                          # every supported unbound card
-gpu_unlock.targets=0000:21:00.0                 # only these cards
-gpu_unlock.targets=0000:21:00.0,0000:22:00.0    # comma-separated
-```
+The kernel module and packaging are licensed under **GPL-2.0-only**. See [`firmware/NOTICE.md`](firmware/NOTICE.md) and [`licenses/`](licenses/) for attribution and third-party notices.
 
-Addresses are full PCI names as `lspci -D` prints them (hex digits in either
-case), independent of GPU numbering and display role. An entry that is not
-a supported card (see [Supported GPUs](#supported-gpus)), including `all` mixed with addresses, is logged and ignored.
-The cards are unlocked concurrently, about a second in all however many
-there are, and each on its own: a card that is already bound or powered
-down is skipped. Bus mastering that the board firmware left on (Supermicro
-X11 does this whatever its option ROM and bus master settings) is cleared
-first; a card some driver already initialised is still refused. Then
-`nvidia` loads and binds every card as usual.
+### Support
 
-The display card works too. Its firmware framebuffer (the boot console and
-Plymouth) keeps running while the unlock's firmware steps run, and is
-removed just before the card's reset, as `nvidia-drm` would do a moment
-later anyway. Its screen is blank from that reset until `nvidia-drm` takes
-over.
-
-Loading the module by hand after boot does nothing to a card that `nvidia`
-has bound.
-
-Suspend to RAM powers the cards off, which resets the speed selectors. After
-resume the module unlocks every card it unlocked at boot again, before
-`nvidia` resumes it: its suspend notifier runs just ahead of the one `nvidia`
-resumes its cards from (`NVreg_UseKernelSuspendNotifiers=1`, the default in
-current drivers; `nvidia-resume.service` runs later still). This adds about a
-second to resume. A card that kept power, as in suspend to idle, is still
-unlocked and is only read. A card that `nvidia` has already resumed, or that is
-bound to another driver, is left as it is, and the log says why. Add
-`gpu_unlock.resume=0` to the kernel command line, or write `0` to
-`/sys/module/gpu_unlock/parameters/resume`, to turn this off. Hibernation is
-not covered.
-
-Check the result with:
-
-```sh
-journalctl -k -b | grep gpu_unlock
-lspci -nnk -s 0000:[ID]:00.0
-```
-
-To stop unlocking, remove `gpu_unlock.targets=` from the kernel command line;
-for a one-off boot, delete it in the bootloader's edit screen. Removing the
-packages also removes the module and the initramfs drop-ins.
-
-If the firmware on a card never stops, the module logs it and keeps the DMA
-buffers that firmware may still use until the next power off. Power off
-before trying again.
-
-The kernel module and local packaging are GPL-2.0-only. The generated buffer
-derives from the pinned CMP reference; NVIDIA firmware remains under its own
-terms. See `firmware/NOTICE.md` and `licenses/` for attribution and notices.
-
-# Support me
-
-### Support Turing fork & RTX 2060 support (Kaspral1)
-
-If the Turing / RTX 2060 unlock helped you, consider supporting my work:
+If Turing / RTX 20 support helped you, you can support development here:
 
 [![Sponsor on Buy Me a Coffee](https://img.shields.io/badge/Sponsor-Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/kaspral)
 
-- **Buy Me a Coffee:** [https://buymeacoffee.com/kaspral](https://buymeacoffee.com/kaspral)
+- **Buy Me a Coffee:** [buymeacoffee.com/kaspral](https://buymeacoffee.com/kaspral)
 - **BTC:** `bc1pdc8clusv5hpgz7laywwzhjjcklk6x2cgj2xu5uc9xes9fukxaegsn7cs20`
 - **ETH:** `0x006dAcBA1344144AB395D02637045Dd19aB54C2E`
 - **SOL:** `96Lc4X6hieoCkUFHtDW4wvbWXgZvebqTktjRNiCNe1ex`
-
-### Support original author (Zagitta)
-
-Help Zagitta buy more GPUs <3
-
-[Github Sponsor](https://github.com/sponsors/Zagitta)
-
-[https://buymeacoffee.com/zagitta](https://buymeacoffee.com/zagitta)
-
-ETH: `0xf4eee937937f92038D70B16AbD7736D8a53a1c5c`
-
-BTC: `bc1qwpkwp70fn76z3s4kg2l9y3j4kst95twcznuugf`
-
-SOL: `8Rih6HY7V4LcdjYHz4iSffT4fTniqw5CACaBigSVxNYu`

@@ -46,8 +46,8 @@ Oryginalne repozytorium `Zagitta/gpu-unlock` zostało zaprojektowane głównie p
 W trakcie diagnostyki rozwiązaliśmy **6 kluczowych problemów sprzętowo-programowych**:
 
 ### Problem 1: Brak identyfikatora PCI `0x1f15` (RTX 2060 Mobile)
-- **Przyczyna:** W pliku `kernel/gpu_unlock/recipes.c` tablica `gu_cards[]` zawierała wyłącznie identyfikatory desktopowego RTX 2060 (`0x1f08`, `0x1f09`, `0x1f0a`, `0x1f12`) oraz wariant Max-Q (`0x1f55`), pomijając standardowy układ mobilny `0x1f15`.
-- **Rozwiązanie:** Dodano wpis `GU_CARD(0x1f15, tu102)` w `recipes.c`.
+- **Przyczyna:** W pliku `kernel/gpu_unlock/recipes.c` tablica `cards[]` zawierała wpisy `TU106(...)` dla wybranych wariantów RTX 2060/2070 (`0x1f02`, `0x1f03`, `0x1f06`, `0x1f07`, `0x1f08`, `0x1f11`, `0x1f42`, `0x1f47`), ale pomijała mobilny wariant RTX 2060 Mobile `0x1f15`.
+- **Rozwiązanie:** Dodano wpis `TU106(0x1f15)` w tablicy `cards[]` w `kernel/gpu_unlock/recipes.c`.
 
 ### Problem 2: Różnice w rejestrach selektorów prędkości SM na architekturze Turing (`TU102`/`TU104`/`TU106`)
 - **Przyczyna:** Na architekturze Turing rejestry sterujące przepustowością Tensor Core znajdują się pod innymi adresami BAR0 niż na Ampere:
